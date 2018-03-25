@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2011 Niels Provos and Nick Mathewson
+ * Copyright (c) 2010-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,8 +24,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _TESTUTILS_H
-#define _TESTUTILS_H
+#ifndef REGRESS_TESTUTILS_H_INCLUDED_
+#define REGRESS_TESTUTILS_H_INCLUDED_
 
 #include "event2/dns.h"
 
@@ -34,6 +34,7 @@ struct regress_dns_server_table {
 	const char *anstype;
 	const char *ans;
 	int seen;
+	int lower;
 };
 
 struct evdns_server_port *
@@ -62,5 +63,5 @@ struct sockaddr;
 int regress_get_listener_addr(struct evconnlistener *lev,
     struct sockaddr *sa, ev_socklen_t *socklen);
 
-#endif /* _TESTUTILS_H */
+#endif /* REGRESS_TESTUTILS_H_INCLUDED_ */
 

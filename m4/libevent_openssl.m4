@@ -13,7 +13,7 @@ case "$enable_openssl" in
 	OPENSSL_LIBS=`$PKG_CONFIG --libs openssl 2>/dev/null`
 	case "$OPENSSL_LIBS" in
 	 '') ;;
-	 *) OPENSSL_LIBS="$OPENSSL_LIBS $EV_LIB_GDI $EV_LIB_WS32"
+	 *) OPENSSL_LIBS="$OPENSSL_LIBS $EV_LIB_GDI $EV_LIB_WS32 $OPENSSL_LIBADD"
 	    have_openssl=yes
 	    ;;
 	esac
@@ -26,14 +26,23 @@ case "$enable_openssl" in
 	save_LIBS="$LIBS"
 	LIBS=""
 	OPENSSL_LIBS=""
-	AC_SEARCH_LIBS([SSL_new], [ssl],
-	    [have_openssl=yes
-	    OPENSSL_LIBS="$LIBS -lcrypto $EV_LIB_GDI $EV_LIB_WS32"],
-	    [have_openssl=no],
-	    [-lcrypto $EV_LIB_GDI $EV_LIB_WS32])
-	LIBS="$save_LIBS"
+	for lib in crypto eay32; do
+		# clear cache
+		unset ac_cv_search_SSL_new
+		AC_SEARCH_LIBS([SSL_new], [ssl ssl32],
+		    [have_openssl=yes
+		    OPENSSL_LIBS="$LIBS -l$lib $EV_LIB_GDI $EV_LIB_WS32 $OPENSSL_LIBADD"],
+		    [have_openssl=no],
+		    [-l$lib $EV_LIB_GDI $EV_LIB_WS32 $OPENSSL_LIBADD])
+		LIBS="$save_LIBS"
+		test "$have_openssl" = "yes" && break
+	done
 	;;
     esac
+    CPPFLAGS_SAVE=$CPPFLAGS
+    CPPFLAGS+=$OPENSSL_INCS
+    AC_CHECK_HEADERS([openssl/ssl.h], [], [have_openssl=no])
+    CPPFLAGS=$CPPFLAGS_SAVE
     AC_SUBST(OPENSSL_INCS)
     AC_SUBST(OPENSSL_LIBS)
     case "$have_openssl" in

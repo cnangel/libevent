@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000-2007 Niels Provos <provos@citi.umich.edu>
- * Copyright (c) 2007-2011 Niels Provos and Nick Mathewson
+ * Copyright (c) 2007-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,10 +24,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _LOG_H_
-#define _LOG_H_
+#ifndef LOG_INTERNAL_H_INCLUDED_
+#define LOG_INTERNAL_H_INCLUDED_
 
 #include "event2/util.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifdef __GNUC__
 #define EV_CHECK_FMT(a,b) __attribute__((format(printf, a, b)))
@@ -37,38 +41,44 @@
 #define EV_NORETURN
 #endif
 
-#define _EVENT_ERR_ABORT ((int)0xdeaddead)
+#define EVENT_ERR_ABORT_ ((int)0xdeaddead)
 
-#define USE_GLOBAL_FOR_DEBUG_LOGGING
-
-#if !defined(_EVENT_DISABLE_DEBUG_MODE) || defined(USE_DEBUG)
+#if !defined(EVENT__DISABLE_DEBUG_MODE) || defined(USE_DEBUG)
 #define EVENT_DEBUG_LOGGING_ENABLED
 #endif
 
 #ifdef EVENT_DEBUG_LOGGING_ENABLED
-#ifdef USE_GLOBAL_FOR_DEBUG_LOGGING
-extern ev_uint32_t _event_debug_logging_mask;
-#define _event_debug_get_logging_mask() (_event_debug_logging_mask)
+EVENT2_CORE_EXPORT_SYMBOL extern ev_uint32_t event_debug_logging_mask_;
+#define event_debug_get_logging_mask_() (event_debug_logging_mask_)
 #else
-ev_uint32_t _event_debug_get_logging_mask(void);
-#endif
-#else
-#define _event_debug_get_logging_mask() (0)
+#define event_debug_get_logging_mask_() (0)
 #endif
 
+EVENT2_EXPORT_SYMBOL
 void event_err(int eval, const char *fmt, ...) EV_CHECK_FMT(2,3) EV_NORETURN;
+EVENT2_EXPORT_SYMBOL
 void event_warn(const char *fmt, ...) EV_CHECK_FMT(1,2);
+EVENT2_EXPORT_SYMBOL
 void event_sock_err(int eval, evutil_socket_t sock, const char *fmt, ...) EV_CHECK_FMT(3,4) EV_NORETURN;
+EVENT2_EXPORT_SYMBOL
 void event_sock_warn(evutil_socket_t sock, const char *fmt, ...) EV_CHECK_FMT(2,3);
+EVENT2_EXPORT_SYMBOL
 void event_errx(int eval, const char *fmt, ...) EV_CHECK_FMT(2,3) EV_NORETURN;
+EVENT2_EXPORT_SYMBOL
 void event_warnx(const char *fmt, ...) EV_CHECK_FMT(1,2);
+EVENT2_EXPORT_SYMBOL
 void event_msgx(const char *fmt, ...) EV_CHECK_FMT(1,2);
-void _event_debugx(const char *fmt, ...) EV_CHECK_FMT(1,2);
+EVENT2_EXPORT_SYMBOL
+void event_debugx_(const char *fmt, ...) EV_CHECK_FMT(1,2);
+
+EVENT2_EXPORT_SYMBOL
+void event_logv_(int severity, const char *errstr, const char *fmt, va_list ap)
+	EV_CHECK_FMT(3,0);
 
 #ifdef EVENT_DEBUG_LOGGING_ENABLED
 #define event_debug(x) do {			\
-	if (_event_debug_get_logging_mask()) {	\
-		_event_debugx x;		\
+	if (event_debug_get_logging_mask_()) {	\
+		event_debugx_ x;		\
 	}					\
 	} while (0)
 #else
@@ -77,4 +87,8 @@ void _event_debugx(const char *fmt, ...) EV_CHECK_FMT(1,2);
 
 #undef EV_CHECK_FMT
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif /* LOG_INTERNAL_H_INCLUDED_ */

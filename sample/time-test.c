@@ -18,7 +18,7 @@
 #include <unistd.h>
 #endif
 #include <time.h>
-#ifdef _EVENT_HAVE_SYS_TIME_H
+#ifdef EVENT__HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
 #include <fcntl.h>
@@ -74,11 +74,10 @@ main(int argc, char **argv)
 #ifdef _WIN32
 	WORD wVersionRequested;
 	WSADATA wsaData;
-	int	err;
 
 	wVersionRequested = MAKEWORD(2, 2);
 
-	err = WSAStartup(wVersionRequested, &wsaData);
+	(void)WSAStartup(wVersionRequested, &wsaData);
 #endif
 
 	if (argc == 2 && !strcmp(argv[1], "-p")) {

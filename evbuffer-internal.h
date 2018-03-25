@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000-2007 Niels Provos <provos@citi.umich.edu>
- * Copyright (c) 2007-2011 Niels Provos and Nick Mathewson
+ * Copyright (c) 2007-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,8 +24,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _EVBUFFER_INTERNAL_H_
-#define _EVBUFFER_INTERNAL_H_
+#ifndef EVBUFFER_INTERNAL_H_INCLUDED_
+#define EVBUFFER_INTERNAL_H_INCLUDED_
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +34,7 @@ extern "C" {
 #include "event2/event-config.h"
 #include "evconfig-private.h"
 #include "event2/util.h"
+#include "event2/event_struct.h"
 #include "util-internal.h"
 #include "defer-internal.h"
 
@@ -50,7 +51,7 @@ extern "C" {
 /* Minimum allocation for a chain.  We define this so that we're burning no
  * more than 5% of each allocation on overhead.  It would be nice to lose even
  * less space, though. */
-#if _EVENT_SIZEOF_VOID_P < 8
+#if EVENT__SIZEOF_VOID_P < 8
 #define MIN_BUFFER_SIZE	512
 #else
 #define MIN_BUFFER_SIZE	1024
@@ -91,7 +92,7 @@ struct evbuffer {
 	 * If the buffer has no chains, it is NULL.
 	 *
 	 * The last_with_datap pointer points at _whatever 'next' pointer_
-	 * points at the last_with_datap chain.  If the last_with_data chain
+	 * pointing at the last_with_data chain. If the last_with_data chain
 	 * is the first chain, or it is NULL, then the last_with_datap pointer
 	 * is &buf->first.
 	 */
@@ -107,7 +108,7 @@ struct evbuffer {
 	 * tried to invoke callbacks. */
 	size_t n_del_for_cb;
 
-#ifndef _EVENT_DISABLE_THREAD_SUPPORT
+#ifndef EVENT__DISABLE_THREAD_SUPPORT
 	/** A lock used to mediate access to this buffer. */
 	void *lock;
 #endif
@@ -134,7 +135,7 @@ struct evbuffer {
 	ev_uint32_t flags;
 
 	/** Used to implement deferred callbacks. */
-	struct deferred_cb_queue *cb_queue;
+	struct event_base *cb_queue;
 
 	/** A reference count on this evbuffer.	 When the reference count
 	 * reaches 0, the buffer is destroyed.	Manipulated with
@@ -142,9 +143,9 @@ struct evbuffer {
 	 * evbuffer_free. */
 	int refcnt;
 
-	/** A deferred_cb handle to make all of this buffer's callbacks
+	/** A struct event_callback handle to make all of this buffer's callbacks
 	 * invoked from the event loop. */
-	struct deferred_cb deferred;
+	struct event_callback deferred;
 
 	/** A doubly-linked-list of callback functions */
 	LIST_HEAD(evbuffer_cb_queue, evbuffer_cb_entry) callbacks;
@@ -153,6 +154,18 @@ struct evbuffer {
 	 * NULL if the evbuffer stands alone. */
 	struct bufferevent *parent;
 };
+
+#if EVENT__SIZEOF_OFF_T < EVENT__SIZEOF_SIZE_T
+typedef ev_ssize_t ev_misalign_t;
+#define EVBUFFER_CHAIN_MAX ((size_t)EV_SSIZE_MAX)
+#else
+typedef ev_off_t ev_misalign_t;
+#if EVENT__SIZEOF_OFF_T > EVENT__SIZEOF_SIZE_T
+#define EVBUFFER_CHAIN_MAX EV_SIZE_MAX
+#else
+#define EVBUFFER_CHAIN_MAX ((size_t)EV_SSIZE_MAX)
+#endif
+#endif
 
 /** A single item in an evbuffer. */
 struct evbuffer_chain {
@@ -164,7 +177,7 @@ struct evbuffer_chain {
 
 	/** unused space at the beginning of buffer or an offset into a
 	 * file for sendfile buffers. */
-	ev_off_t misalign;
+	ev_misalign_t misalign;
 
 	/** Offset into buffer + misalign at which to start writing.
 	 * In other words, the total number of bytes actually stored
@@ -246,6 +259,10 @@ struct evbuffer_file_segment {
 	ev_off_t mmap_offset;
 	/** The length of this segment. */
 	ev_off_t length;
+	/** Cleanup callback function */
+	evbuffer_file_segment_cleanup_cb cleanup_cb;
+	/** Argument to be pass to cleanup callback function */
+	void *cleanup_cb_arg;
 };
 
 /** Information about the multicast parent of a chain.  Lives at the
@@ -283,21 +300,21 @@ struct evbuffer_multicast_parent {
 	} while (0)
 
 /** Increase the reference count of buf by one. */
-void _evbuffer_incref(struct evbuffer *buf);
+void evbuffer_incref_(struct evbuffer *buf);
 /** Increase the reference count of buf by one and acquire the lock. */
-void _evbuffer_incref_and_lock(struct evbuffer *buf);
+void evbuffer_incref_and_lock_(struct evbuffer *buf);
 /** Pin a single buffer chain using a given flag. A pinned chunk may not be
  * moved or freed until it is unpinned. */
-void _evbuffer_chain_pin(struct evbuffer_chain *chain, unsigned flag);
+void evbuffer_chain_pin_(struct evbuffer_chain *chain, unsigned flag);
 /** Unpin a single buffer chain using a given flag. */
-void _evbuffer_chain_unpin(struct evbuffer_chain *chain, unsigned flag);
+void evbuffer_chain_unpin_(struct evbuffer_chain *chain, unsigned flag);
 /** As evbuffer_free, but requires that we hold a lock on the buffer, and
  * releases the lock before freeing it and the buffer. */
-void _evbuffer_decref_and_unlock(struct evbuffer *buffer);
+void evbuffer_decref_and_unlock_(struct evbuffer *buffer);
 
 /** As evbuffer_expand, but does not guarantee that the newly allocated memory
  * is contiguous.  Instead, it may be split across two or more chunks. */
-int _evbuffer_expand_fast(struct evbuffer *, size_t, int);
+int evbuffer_expand_fast_(struct evbuffer *, size_t, int);
 
 /** Helper: prepares for a readv/WSARecv call by expanding the buffer to
  * hold enough memory to read 'howmuch' bytes in possibly noncontiguous memory.
@@ -305,7 +322,7 @@ int _evbuffer_expand_fast(struct evbuffer *, size_t, int);
  * extent, and *chainp to point to the first chain that we'll try to read into.
  * Returns the number of vecs used.
  */
-int _evbuffer_read_setup_vecs(struct evbuffer *buf, ev_ssize_t howmuch,
+int evbuffer_read_setup_vecs_(struct evbuffer *buf, ev_ssize_t howmuch,
     struct evbuffer_iovec *vecs, int n_vecs, struct evbuffer_chain ***chainp,
     int exact);
 
@@ -318,12 +335,17 @@ int _evbuffer_read_setup_vecs(struct evbuffer *buf, ev_ssize_t howmuch,
  * See note in buffer_iocp's launch_write function */
 
 /** Set the parent bufferevent object for buf to bev */
-void evbuffer_set_parent(struct evbuffer *buf, struct bufferevent *bev);
+void evbuffer_set_parent_(struct evbuffer *buf, struct bufferevent *bev);
 
-void evbuffer_invoke_callbacks(struct evbuffer *buf);
+void evbuffer_invoke_callbacks_(struct evbuffer *buf);
+
+
+int evbuffer_get_callbacks_(struct evbuffer *buffer,
+    struct event_callback **cbs,
+    int max_cbs);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _EVBUFFER_INTERNAL_H_ */
+#endif /* EVBUFFER_INTERNAL_H_INCLUDED_ */

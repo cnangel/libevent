@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2011 Niels Provos and Nick Mathewson
+ * Copyright 2008-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -90,7 +90,7 @@ main(int argc, char **argv)
 	int i;
 	int c;
 	int use_iocp = 0;
-	unsigned short port = 8080;
+	ev_uint16_t port = 8080;
 	char *endptr = NULL;
 
 #ifdef _WIN32
@@ -138,7 +138,9 @@ main(int argc, char **argv)
 #ifdef _WIN32
 		case 'i':
 			use_iocp = 1;
+#ifdef EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED
 			evthread_use_windows_threads();
+#endif
 			event_config_set_flag(cfg,EVENT_BASE_FLAG_STARTUP_IOCP);
 			break;
 #endif
@@ -169,10 +171,8 @@ main(int argc, char **argv)
 	evhttp_set_cb(http, "/ind", http_basic_cb, NULL);
 	fprintf(stderr, "/ind - basic content (memory copy)\n");
 
-#ifdef _EVENT2_EVENT_H_
 	evhttp_set_cb(http, "/ref", http_ref_cb, NULL);
 	fprintf(stderr, "/ref - basic content (reference)\n");
-#endif
 
 	fprintf(stderr, "Serving %d bytes on port %d using %s\n",
 	    (int)content_len, port,
@@ -180,11 +180,17 @@ main(int argc, char **argv)
 
 	evhttp_bind_socket(http, "0.0.0.0", port);
 
+#ifdef _WIN32
 	if (use_iocp) {
 		struct timeval tv={99999999,0};
 		event_base_loopexit(base, &tv);
 	}
+#endif
 	event_base_dispatch(base);
+
+#ifdef _WIN32
+	WSACleanup();
+#endif
 
 	/* NOTREACHED */
 	return (0);

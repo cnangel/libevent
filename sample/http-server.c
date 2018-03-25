@@ -40,7 +40,7 @@
 #include <event2/util.h>
 #include <event2/keyvalq_struct.h>
 
-#ifdef _EVENT_HAVE_NETINET_IN_H
+#ifdef EVENT__HAVE_NETINET_IN_H
 #include <netinet/in.h>
 # ifdef _XOPEN_SOURCE_EXTENDED
 #  include <arpa/inet.h>
@@ -48,11 +48,21 @@
 #endif
 
 #ifdef _WIN32
+#ifndef stat
 #define stat _stat
+#endif
+#ifndef fstat
 #define fstat _fstat
+#endif
+#ifndef open
 #define open _open
+#endif
+#ifndef close
 #define close _close
+#endif
+#ifndef O_RDONLY
 #define O_RDONLY _O_RDONLY
+#endif
 #endif
 
 char uri_root[512];
@@ -72,7 +82,7 @@ static const struct table_entry {
 	{ "jpeg", "image/jpeg" },
 	{ "png", "image/png" },
 	{ "pdf", "application/pdf" },
-	{ "ps", "application/postsript" },
+	{ "ps", "application/postscript" },
 	{ NULL, NULL },
 };
 
@@ -132,7 +142,7 @@ dump_request_cb(struct evhttp_request *req, void *arg)
 	while (evbuffer_get_length(buf)) {
 		int n;
 		char cbuf[128];
-		n = evbuffer_remove(buf, cbuf, sizeof(buf)-1);
+		n = evbuffer_remove(buf, cbuf, sizeof(cbuf));
 		if (n > 0)
 			(void) fwrite(cbuf, 1, n, stdout);
 	}
@@ -236,15 +246,18 @@ send_document_cb(struct evhttp_request *req, void *arg)
 			goto err;
 #endif
 
-		evbuffer_add_printf(evb, "<html>\n <head>\n"
+		evbuffer_add_printf(evb,
+                    "<!DOCTYPE html>\n"
+                    "<html>\n <head>\n"
+                    "  <meta charset='utf-8'>\n"
 		    "  <title>%s</title>\n"
-		    "  <base href='%s%s%s'>\n"
+		    "  <base href='%s%s'>\n"
 		    " </head>\n"
 		    " <body>\n"
 		    "  <h1>%s</h1>\n"
 		    "  <ul>\n",
 		    decoded_path, /* XXX html-escape this. */
-		    uri_root, path, /* XXX html-escape this? */
+		    path, /* XXX html-escape this? */
 		    trailing_slash,
 		    decoded_path /* XXX html-escape this */);
 #ifdef _WIN32
@@ -264,7 +277,7 @@ send_document_cb(struct evhttp_request *req, void *arg)
 #endif
 		evbuffer_add_printf(evb, "</ul></body></html>\n");
 #ifdef _WIN32
-		CloseHandle(d);
+		FindClose(d);
 #else
 		closedir(d);
 #endif
@@ -320,7 +333,7 @@ main(int argc, char **argv)
 	struct evhttp *http;
 	struct evhttp_bound_socket *handle;
 
-	unsigned short port = 0;
+	ev_uint16_t port = 0;
 #ifdef _WIN32
 	WSADATA WSAData;
 	WSAStartup(0x101, &WSAData);

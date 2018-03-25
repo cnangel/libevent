@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2011 Niels Provos and Nick Mathewson
+ * Copyright (c) 2009-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,7 +31,7 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef _EVENT_HAVE_SYS_SOCKET_H
+#ifdef EVENT__HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
 #include <fcntl.h>
@@ -67,10 +67,6 @@ read_cb(evutil_socket_t fd, short event, void *arg)
 		event_del(arg);
 }
 
-#ifndef SHUT_WR
-#define SHUT_WR 1
-#endif
-
 #ifdef _WIN32
 #define LOCAL_SOCKETPAIR_AF AF_INET
 #else
@@ -93,7 +89,7 @@ test_edgetriggered(void *et)
 	 * problem.
 	 */
 #ifdef __linux__
-	if (evutil_ersatz_socketpair(AF_INET, SOCK_STREAM, 0, pair) == -1) {
+	if (evutil_ersatz_socketpair_(AF_INET, SOCK_STREAM, 0, pair) == -1) {
 		tt_abort_perror("socketpair");
 	}
 #else
@@ -104,8 +100,8 @@ test_edgetriggered(void *et)
 
 	called = was_et = 0;
 
-	send(pair[0], test, (int)strlen(test)+1, 0);
-	shutdown(pair[0], SHUT_WR);
+	tt_int_op(send(pair[0], test, (int)strlen(test)+1, 0), >, 0);
+	shutdown(pair[0], EVUTIL_SHUT_WR);
 
 	/* Initalize the event library */
 	base = event_base_new();
@@ -162,18 +158,21 @@ test_edgetriggered_mix_error(void *data_)
 	struct event_base *base = NULL;
 	struct event *ev_et=NULL, *ev_lt=NULL;
 
-#ifdef _EVENT_DISABLE_DEBUG_MODE
+#ifdef EVENT__DISABLE_DEBUG_MODE
 	if (1)
 		tt_skip();
 #endif
 
-	event_enable_debug_mode();
+	if (!libevent_tests_running_in_debug_mode)
+		event_enable_debug_mode();
 
 	base = event_base_new();
 
 	/* try mixing edge-triggered and level-triggered to make sure it fails*/
 	ev_et = event_new(base, data->pair[0], EV_READ|EV_ET, read_cb, ev_et);
+	tt_assert(ev_et);
 	ev_lt = event_new(base, data->pair[0], EV_READ, read_cb, ev_lt);
+	tt_assert(ev_lt);
 
 	/* Add edge-triggered, then level-triggered.  Get an error. */
 	tt_int_op(0, ==, event_add(ev_et, NULL));

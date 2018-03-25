@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2011 Niels Provos and Nick Mathewson
+ * Copyright (c) 2007-2012 Niels Provos and Nick Mathewson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,20 +34,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _EVENT_HAVE_UNISTD_H
+#ifdef EVENT__HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef _EVENT_HAVE_SYS_WAIT_H
+#ifdef EVENT__HAVE_SYS_WAIT_H
 #include <sys/wait.h>
 #endif
 
-#ifdef _EVENT_HAVE_PTHREADS
+#ifdef EVENT__HAVE_PTHREADS
 #include <pthread.h>
 #elif defined(_WIN32)
 #include <process.h>
 #endif
 #include <assert.h>
-#ifdef _EVENT_HAVE_UNISTD_H
+#ifdef EVENT__HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <time.h>
@@ -63,24 +63,8 @@
 #include "defer-internal.h"
 #include "regress.h"
 #include "tinytest_macros.h"
-
-#ifdef _EVENT_HAVE_PTHREADS
-#define THREAD_T pthread_t
-#define THREAD_FN void *
-#define THREAD_RETURN() return (NULL)
-#define THREAD_START(threadvar, fn, arg) \
-	pthread_create(&(threadvar), NULL, fn, arg)
-#define THREAD_JOIN(th) pthread_join(th, NULL)
-#else
-#define THREAD_T HANDLE
-#define THREAD_FN unsigned __stdcall
-#define THREAD_RETURN() return (0)
-#define THREAD_START(threadvar, fn, arg) do {		\
-	uintptr_t threadhandle = _beginthreadex(NULL,0,fn,(arg),0,NULL); \
-	(threadvar) = (HANDLE) threadhandle; \
-	} while (0)
-#define THREAD_JOIN(th) WaitForSingleObject(th, INFINITE)
-#endif
+#include "time-internal.h"
+#include "regress_thread.h"
 
 struct cond_wait {
 	void *lock;
@@ -377,7 +361,7 @@ thread_conditions_simple(void *arg)
 			    &tv_signal);
 			diff2 = timeval_msec_diff(&actual_delay,
 			    &tv_broadcast);
-			if (abs(diff1) < abs(diff2)) {
+			if (labs(diff1) < labs(diff2)) {
 				TT_BLATHER(("%d looks like a signal\n", i));
 				target_delay = &tv_signal;
 				++n_signal;
@@ -392,13 +376,14 @@ thread_conditions_simple(void *arg)
 		}
 		evutil_timeradd(target_delay, &launched_at, &target_time);
 		test_timeval_diff_leq(&target_time, &alerted[i].alerted_at,
-		    0, 50);
+		    0, 200);
 	}
 	tt_int_op(n_broadcast + n_signal + n_timed_out, ==, NUM_THREADS);
 	tt_int_op(n_signal, ==, 1);
 
 end:
-	;
+	EVTHREAD_FREE_LOCK(cond.lock, EVTHREAD_LOCKTYPE_RECURSIVE);
+	EVTHREAD_FREE_COND(cond.cond);
 }
 
 #define CB_COUNT 128
@@ -410,12 +395,12 @@ SLEEP_MS(int ms)
 	struct timeval tv;
 	tv.tv_sec = ms/1000;
 	tv.tv_usec = (ms%1000)*1000;
-	evutil_usleep(&tv);
+	evutil_usleep_(&tv);
 }
 
 struct deferred_test_data {
-	struct deferred_cb cbs[CB_COUNT];
-	struct deferred_cb_queue *queue;
+	struct event_callback cbs[CB_COUNT];
+	struct event_base *queue;
 };
 
 static struct timeval timer_start = {0,0};
@@ -425,7 +410,7 @@ static THREAD_T load_threads[QUEUE_THREAD_COUNT];
 static struct deferred_test_data deferred_data[QUEUE_THREAD_COUNT];
 
 static void
-deferred_callback(struct deferred_cb *cb, void *arg)
+deferred_callback(struct event_callback *cb, void *arg)
 {
 	SLEEP_MS(1);
 	callback_count += 1;
@@ -438,8 +423,9 @@ load_deferred_queue(void *arg)
 	size_t i;
 
 	for (i = 0; i < CB_COUNT; ++i) {
-		event_deferred_cb_init(&data->cbs[i], deferred_callback, NULL);
-		event_deferred_cb_schedule(data->queue, &data->cbs[i]);
+		event_deferred_cb_init_(&data->cbs[i], 0, deferred_callback,
+		    NULL);
+		event_deferred_cb_schedule_(data->queue, &data->cbs[i]);
 		SLEEP_MS(1);
 	}
 
@@ -466,25 +452,29 @@ start_threads_callback(evutil_socket_t fd, short what, void *arg)
 static void
 thread_deferred_cb_skew(void *arg)
 {
-	struct basic_test_data *data = arg;
 	struct timeval tv_timer = {1, 0};
-	struct deferred_cb_queue *queue;
+	struct event_base *base = NULL;
+	struct event_config *cfg = NULL;
 	struct timeval elapsed;
 	int elapsed_usec;
 	int i;
 
-	queue = event_base_get_deferred_cb_queue(data->base);
-	tt_assert(queue);
+	cfg = event_config_new();
+	tt_assert(cfg);
+	event_config_set_max_dispatch_interval(cfg, NULL, 16, 0);
+
+	base = event_base_new_with_config(cfg);
+	tt_assert(base);
 
 	for (i = 0; i < QUEUE_THREAD_COUNT; ++i)
-		deferred_data[i].queue = queue;
+		deferred_data[i].queue = base;
 
 	evutil_gettimeofday(&timer_start, NULL);
-	event_base_once(data->base, -1, EV_TIMEOUT, timer_callback, NULL,
+	event_base_once(base, -1, EV_TIMEOUT, timer_callback, NULL,
 			&tv_timer);
-	event_base_once(data->base, -1, EV_TIMEOUT, start_threads_callback,
+	event_base_once(base, -1, EV_TIMEOUT, start_threads_callback,
 			NULL, NULL);
-	event_base_dispatch(data->base);
+	event_base_dispatch(base);
 
 	evutil_timersub(&timer_end, &timer_start, &elapsed);
 	TT_BLATHER(("callback count, %u", callback_count));
@@ -499,6 +489,10 @@ thread_deferred_cb_skew(void *arg)
 end:
 	for (i = 0; i < QUEUE_THREAD_COUNT; ++i)
 		THREAD_JOIN(load_threads[i]);
+	if (base)
+		event_base_free(base);
+	if (cfg)
+		event_config_free(cfg);
 }
 
 static struct event time_events[5];
@@ -582,8 +576,15 @@ struct testcase_t thread_testcases[] = {
 	  &basic_setup, (char*)"forking" },
 #endif
 	TEST(conditions_simple),
-	TEST(deferred_cb_skew),
+	{ "deferred_cb_skew", thread_deferred_cb_skew,
+	  TT_FORK|TT_NEED_THREADS|TT_OFF_BY_DEFAULT,
+	  &basic_setup, NULL },
+#ifndef _WIN32
+	/****** XXX TODO FIXME windows seems to be having some timing trouble,
+	 * looking into it now. / ellzey
+	 ******/
 	TEST(no_events),
+#endif
 	END_OF_TESTCASES
 };
 
